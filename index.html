@@ -4,50 +4,34 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Website Downtime Tracker</title>
-  <meta name="description" content="Simple offline-first tracker for downtime incidents. Save to your browser, export/import JSON for backup." />
+  <meta name="description" content="Offline-first tracker for downtime incidents with EUR currency, localized separators, and JSON import/export." />
   <style>
     :root{
-      --bg:#0b0f14;
-      --panel:#121821;
-      --panel-2:#0f141c;
-      --text:#e8eef6;
-      --muted:#9fb2c7;
-      --accent:#6ee7b7;
-      --accent-2:#60a5fa;
-      --danger:#f87171;
-      --warn:#fbbf24;
-      --success:#34d399;
-      --border:#223041;
-      --shadow: 0 10px 30px rgba(0,0,0,.35);
-      --radius: 16px;
+      --bg:#0b0f14; --panel:#121821; --panel-2:#0f141c; --text:#e8eef6; --muted:#9fb2c7;
+      --accent:#6ee7b7; --accent-2:#60a5fa; --danger:#f87171; --warn:#fbbf24; --success:#34d399; --border:#223041; --shadow:0 10px 30px rgba(0,0,0,.35); --radius:16px;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{
-      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-      background: radial-gradient(1200px 800px at 10% -10%, #152033 0%, #0b0f14 40%, #0b0f14 100%);
-      color:var(--text);
-    }
-    header{position:sticky; top:0; z-index:2; backdrop-filter: blur(8px); background: linear-gradient(180deg, rgba(11,15,20,.9), rgba(11,15,20,.6)); border-bottom:1px solid var(--border);}
+    body{margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: radial-gradient(1200px 800px at 10% -10%, #152033 0%, #0b0f14 40%, #0b0f14 100%); color:var(--text)}
+    header{position:sticky; top:0; z-index:2; backdrop-filter: blur(8px); background: linear-gradient(180deg, rgba(11,15,20,.9), rgba(11,15,20,.6)); border-bottom:1px solid var(--border)}
     .wrap{max-width:1100px; margin:0 auto; padding:20px}
     .title{display:flex; align-items:center; gap:14px}
     h1{margin:0; font-size: clamp(20px, 2.6vw, 32px)}
     .badge{font-size:12px; padding:4px 8px; border:1px solid var(--border); border-radius:999px; color:var(--muted)}
     .controls{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px}
-    button, input, select, textarea{background: var(--panel); color: var(--text); border:1px solid var(--border); border-radius:12px; padding:10px 12px; font-size:14px;}
+    button, input, select, textarea{background: var(--panel); color: var(--text); border:1px solid var(--border); border-radius:12px; padding:10px 12px; font-size:14px}
     button{cursor:pointer}
     button.primary{background: linear-gradient(180deg, #1e293b, #0f172a); border-color:#1f2a3a}
     button.accent{background: linear-gradient(180deg, #133024, #0f271d); border-color:#1f3b2c}
     button:hover{filter:brightness(1.06)}
     button:active{transform: translateY(1px)}
-    main{display:grid; grid-template-columns: 1.2fr .8fr; gap:20px; padding:20px}
-    @media (max-width: 920px){ main{grid-template-columns: 1fr} }
-    .card{background: linear-gradient(180deg, var(--panel), var(--panel-2)); border:1px solid var(--border); box-shadow: var(--shadow); border-radius: var(--radius);}
-    .card .head{padding:16px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between}
+    main{display:grid; grid-template-columns: 1fr; gap:20px; padding:20px}
+    .card{background: linear-gradient(180deg, var(--panel), var(--panel-2)); border:1px solid var(--border); box-shadow: var(--shadow); border-radius: var(--radius)}
+    .card .head{padding:16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between}
     .card .body{padding:16px}
     .muted{color:var(--muted)}
     .grid{display:grid; grid-template-columns: repeat(6,1fr); gap:10px}
-    .grid .full{grid-column: 1/-1}
+    .grid .full{grid-column:1/-1}
     .grid label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
     .table{width:100%; border-collapse: collapse}
     .table th, .table td{ padding:10px 8px; border-bottom:1px solid var(--border); text-align:left; vertical-align: top }
@@ -63,11 +47,6 @@
     .stat{padding:14px; border-radius:14px; background: linear-gradient(180deg, #0e1520, #0d1117); border:1px solid var(--border)}
     .stat .label{font-size:12px; color:var(--muted)}
     .stat .value{font-size:22px; font-weight:700; margin-top:6px}
-    .footer{padding:20px; text-align:center; color:var(--muted)}
-    .link{color:var(--accent-2); text-decoration:none}
-    .link:hover{text-decoration:underline}
-    .search{display:flex; gap:8px; flex-wrap:wrap}
-    .search input{flex:1}
   </style>
 </head>
 <body>
@@ -83,7 +62,7 @@
       <input type="file" id="importFile" accept="application/json" style="display:none"/>
       <button id="importBtn">Import JSON</button>
       <button id="clearBtn">Clear all</button>
-      <span class="muted">Data is saved to your browser (localStorage).</span>
+      <span class="muted">EUR fixed • Data saved locally (localStorage)</span>
     </div>
   </div>
 </header>
@@ -95,32 +74,64 @@
       <form id="incidentForm">
         <input type="hidden" id="rowId"/>
         <div class="grid">
-          <div style="grid-column: span 2"><label for="date">Date</label><input type="date" id="date" required /></div>
-          <div style="grid-column: span 2"><label for="duration">Total time (minutes)</label><input type="number" id="duration" min="0" step="1" required /></div>
-          <div style="grid-column: span 2"><label for="revenue">Loss of revenue (€)</label><input type="number" id="revenue" min="0" step="0.01" /></div>
-          <div class="full"><label for="learnings">Learnings / Root cause / Notes</label><textarea id="learnings" rows="3"></textarea></div>
-          <div class="full flex" style="justify-content:flex-end; gap:10px"><button type="button" id="resetBtn">Reset</button><button type="submit" class="primary">Save Incident</button></div>
+          <div style="grid-column: span 2">
+            <label for="start">Start (date & time)</label>
+            <input type="datetime-local" id="start" required />
+          </div>
+          <div style="grid-column: span 2">
+            <label for="end">End (date & time)</label>
+            <input type="datetime-local" id="end" required />
+          </div>
+          <div style="grid-column: span 2">
+            <label for="revenue">Loss of revenue (€)</label>
+            <input type="number" id="revenue" min="0" step="0.01" />
+          </div>
+          <div style="grid-column: span 2">
+            <label for="calcDuration">Calculated duration (minutes)</label>
+            <input type="number" id="calcDuration" readonly />
+          </div>
+          <div class="full">
+            <label for="learnings">Learnings / Root cause / Notes</label>
+            <textarea id="learnings" rows="3" style="width:100%"></textarea>
+          </div>
+          <div class="full flex" style="justify-content:flex-end; gap:10px">
+            <button type="button" id="resetBtn">Reset</button>
+            <button type="submit" class="primary">Save Incident</button>
+          </div>
         </div>
       </form>
+      <small class="muted">Duration is calculated from Start → End. End must be after Start.</small>
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" style="grid-column: 1/-1">
     <div class="head"><strong>Incidents</strong></div>
     <div class="body">
-      <table class="table" id="table"><thead><tr><th>Date</th><th>Duration</th><th>Revenue loss (€)</th><th>Learnings</th><th>Actions</th></tr></thead><tbody id="tbody"></tbody></table>
+      <table class="table" id="table">
+        <thead>
+          <tr>
+            <th style="width:180px">Start</th>
+            <th style="width:180px">End</th>
+            <th style="width:110px">Duration</th>
+            <th style="width:150px">Revenue loss (€)</th>
+            <th>Learnings</th>
+            <th style="width:120px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
       <div id="empty" class="muted" style="padding:8px 2px; display:none">No incidents yet.</div>
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" style="grid-column: 1/-1">
     <div class="head"><strong>Metrics</strong></div>
     <div class="body">
       <div class="stat-grid">
         <div class="stat"><div class="label">Total incidents</div><div class="value" id="statIncidents">0</div></div>
         <div class="stat"><div class="label">Total downtime</div><div class="value" id="statDowntime">0m</div></div>
         <div class="stat"><div class="label">MTTR</div><div class="value" id="statMTTR">–</div></div>
-        <div class="stat"><div class="label">Total revenue loss</div><div class="value" id="statRevenue">€0.00</div></div>
+        <div class="stat"><div class="label">Total revenue loss</div><div class="value"><span style="font-weight:bold; margin-right:4px">€</span><span id="statRevenue">0,00</span></div></div>
       </div>
     </div>
   </section>
@@ -128,15 +139,17 @@
 
 <script>
 (function(){
-  const LS_KEY = 'downtimeLog_v1';
-  const currency = new Intl.NumberFormat(undefined, { style:'currency', currency: 'EUR' });
+  const LS_KEY = 'downtimeLog_v2';
+  // Use de-DE for period thousand separator and comma decimal, emit number only (we prepend € in UI)
+  const currency = new Intl.NumberFormat('de-DE', { style:'decimal', minimumFractionDigits:2, maximumFractionDigits:2 });
 
-  let data = load();
+  // DOM
   const tbody = document.getElementById('tbody');
   const form = document.getElementById('incidentForm');
   const rowId = document.getElementById('rowId');
-  const dateEl = document.getElementById('date');
-  const durationEl = document.getElementById('duration');
+  const startEl = document.getElementById('start');
+  const endEl = document.getElementById('end');
+  const calcDurationEl = document.getElementById('calcDuration');
   const revenueEl = document.getElementById('revenue');
   const learningsEl = document.getElementById('learnings');
   const statIncidents = document.getElementById('statIncidents');
@@ -144,69 +157,153 @@
   const statMTTR = document.getElementById('statMTTR');
   const statRevenue = document.getElementById('statRevenue');
 
+  // Data
   function save(){ localStorage.setItem(LS_KEY, JSON.stringify(data)); }
-  function load(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)||'{"entries":[]}'); }catch(e){ return {entries:[]} } }
-  function uid(){ return Math.random().toString(36).slice(2,10); }
-  function fmtDate(iso){ return new Intl.DateTimeFormat(undefined,{year:'numeric',month:'short',day:'2-digit'}).format(new Date(iso)); }
-  function fmtDuration(min){ const h=Math.floor(min/60), m=min%60; return (h? h+'h ':'')+m+'m'; }
+  function load(){ try{ const raw = localStorage.getItem(LS_KEY); return raw? JSON.parse(raw) : {entries:[]}; }catch(e){ return {entries:[]} } }
+  let data = load();
+
+  // Utils
+  function pad(n){ return String(n).padStart(2,'0'); }
+  // Format ISO (UTC) -> value for datetime-local (LOCAL time)
+  function isoToInputLocal(iso){ const d=new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+  function fmtDT(iso){ return new Intl.DateTimeFormat(undefined,{year:'numeric',month:'short',day:'2-digit', hour:'2-digit', minute:'2-digit'}).format(new Date(iso)); }
+  function fmtDuration(min){ if(min==null||isNaN(min)) return '–'; const h=Math.floor(min/60), m=Math.round(min%60); return (h? h+'h ':'')+m+'m'; }
   function fmtMoney(n){ return currency.format(Number(n||0)); }
+  function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+  function renderLearnings(s){ return esc(s||'').replace(/\n/g,'<br>'); }
+
+  // Duration calc – use local interpretation of datetime-local values
+  function calcDuration(){
+    const sVal = startEl.value; const eVal = endEl.value;
+    let minutes = 0;
+    if(sVal && eVal){
+      const s = new Date(sVal.replace(' ','T'));
+      const e = new Date(eVal.replace(' ','T'));
+      minutes = Math.max(0, Math.round((e - s)/60000));
+    }
+    calcDurationEl.value = minutes;
+    return minutes;
+  }
 
   function render(){
     tbody.innerHTML='';
-    if(data.entries.length===0){ document.getElementById('empty').style.display='block'; return; }
-    document.getElementById('empty').style.display='none';
-    data.entries.forEach(e=>{
-      const tr=document.createElement('tr');
-      tr.innerHTML=`<td>${fmtDate(e.date)}</td><td>${fmtDuration(e.duration)}</td><td>${fmtMoney(e.revenue)}</td><td>${e.learnings}</td><td><button data-id="${e.id}" class="del">Delete</button></td>`;
+    const entries = [...data.entries].sort((a,b)=> new Date(b.start)-new Date(a.start));
+    document.getElementById('empty').style.display = entries.length? 'none':'block';
+    for(const e of entries){
+      const tr = document.createElement('tr');
+      const pillClass = e.duration>180? 'pill danger' : e.duration>60? 'pill warn' : 'pill ok';
+      tr.innerHTML = `
+        <td>${fmtDT(e.start)}</td>
+        <td>${fmtDT(e.end)}</td>
+        <td><span class="${pillClass}">${fmtDuration(e.duration)}</span></td>
+        <td>€ ${fmtMoney(e.revenue)}</td>
+        <td>${renderLearnings(e.learnings)}</td>
+        <td><div class="flex">
+          <button data-id="${e.id}" data-act="edit">Edit</button>
+          <button data-id="${e.id}" data-act="dup">Duplicate</button>
+          <button data-id="${e.id}" data-act="del" style="color:#ffb4b4">Delete</button>
+        </div></td>`;
       tbody.appendChild(tr);
-    });
+    }
     updateStats();
   }
 
   function updateStats(){
     const count=data.entries.length;
-    const totalMin=data.entries.reduce((a,b)=>a+(+b.duration||0),0);
-    const totalRev=data.entries.reduce((a,b)=>a+(+b.revenue||0),0);
+    const totalMin=data.entries.reduce((s,r)=>s+(Number(r.duration)||0),0);
+    const totalRev=data.entries.reduce((s,r)=>s+(Number(r.revenue)||0),0);
     statIncidents.textContent=count;
     statDowntime.textContent=fmtDuration(totalMin);
     statMTTR.textContent=count?fmtDuration(Math.round(totalMin/count)):'–';
     statRevenue.textContent=fmtMoney(totalRev);
   }
 
-  form.addEventListener('submit',ev=>{
+  // Events
+  startEl.addEventListener('change', calcDuration);
+  endEl.addEventListener('change', calcDuration);
+
+  form.addEventListener('submit', ev=>{
     ev.preventDefault();
-    const entry={id:rowId.value||uid(), date:dateEl.value, duration:+durationEl.value, revenue:+revenueEl.value, learnings:learningsEl.value};
-    const idx=data.entries.findIndex(e=>e.id===entry.id);
+    const id=rowId.value||Math.random().toString(36).slice(2,10);
+    const sVal=startEl.value, eVal=endEl.value;
+    if(!sVal||!eVal){ alert('Please provide both start and end'); return; }
+    // Interpret datetime-local as local time, then store ISO UTC
+    const s = new Date(sVal.replace(' ','T'));
+    const e = new Date(eVal.replace(' ','T'));
+    if(!(s instanceof Date) || isNaN(+s) || !(e instanceof Date) || isNaN(+e)){ alert('Invalid start or end'); return; }
+    if(e <= s){ alert('End must be after Start'); return; }
+    const duration = Math.round((e - s)/60000);
+    const entry={ id, start: s.toISOString(), end: e.toISOString(), duration, revenue: Number(revenueEl.value||0), learnings: (learningsEl.value||'').trim() };
+    const idx=data.entries.findIndex(x=>x.id===id);
     if(idx>-1) data.entries[idx]=entry; else data.entries.push(entry);
-    save(); render(); form.reset();
+    save(); render(); form.reset(); calcDurationEl.value=''; rowId.value='';
   });
 
-  tbody.addEventListener('click',e=>{
-    if(e.target.classList.contains('del')){
-      const id=e.target.dataset.id;
-      data.entries=data.entries.filter(x=>x.id!==id);
-      save(); render();
+  tbody.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    const id=b.dataset.id; const act=b.dataset.act;
+    const row=data.entries.find(x=>x.id===id); if(!row) return;
+    if(act==='edit'){
+      rowId.value=row.id;
+      startEl.value = isoToInputLocal(row.start);
+      endEl.value = isoToInputLocal(row.end);
+      revenueEl.value=row.revenue;
+      learningsEl.value=row.learnings;
+      calcDuration();
+      window.scrollTo({top:0, behavior:'smooth'});
+    }
+    if(act==='dup'){
+      data.entries.push({...row, id: Math.random().toString(36).slice(2,10)}); save(); render();
+    }
+    if(act==='del'){
+      if(confirm('Delete this incident?')){ data.entries=data.entries.filter(x=>x.id!==id); save(); render(); }
     }
   });
 
   document.getElementById('exportBtn').addEventListener('click',()=>{
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
     a.download='downtime-log.json'; a.click(); URL.revokeObjectURL(a.href);
   });
 
   document.getElementById('importBtn').addEventListener('click',()=>document.getElementById('importFile').click());
   document.getElementById('importFile').addEventListener('change',async ev=>{
     const file=ev.target.files[0]; if(!file) return;
-    try{const json=JSON.parse(await file.text()); data=json; save(); render();}catch(e){alert('Import failed');}
+    try{
+      const json=JSON.parse(await file.text());
+      if(!json || !Array.isArray(json.entries)) throw new Error('Invalid file');
+      data=json; save(); render();
+    }catch(err){ alert('Import failed: '+err.message); }
+    ev.target.value='';
   });
-  document.getElementById('clearBtn').addEventListener('click',()=>{if(confirm('Clear all?')){data={entries:[]}; save(); render();}});
+
+  document.getElementById('clearBtn').addEventListener('click',()=>{
+    if(confirm('This will permanently clear all incidents in this browser. Continue?')){ data={entries:[]}; save(); render(); }
+  });
+
   document.getElementById('addSample').addEventListener('click',()=>{
-    data.entries.push({id:uid(),date:new Date().toISOString().slice(0,10),duration:45,revenue:500,learnings:'Example downtime'});
+    const now=new Date();
+    const start=new Date(now.getTime()-95*60000);
+    data.entries.push({ id: Math.random().toString(36).slice(2,10), start: start.toISOString(), end: now.toISOString(), duration: 95, revenue: 2140.12, learnings: 'Sample outage with two lines\nFailover took too long' });
     save(); render();
   });
 
+  // --- Mini tests (console) ---
+  try{
+    // 1) Duration arithmetic independent of timezone
+    const s = new Date('2024-01-01T10:00:00');
+    const e = new Date('2024-01-01T11:30:00');
+    console.assert(Math.round((e-s)/60000)===90, 'Duration 90m failed');
+    // 2) isoToInputLocal roundtrip should keep local wall-clock (minutes precision)
+    const iso = new Date().toISOString();
+    const back = isoToInputLocal(iso);
+    console.assert(/T\d{2}:\d{2}$/.test(back), 'isoToInputLocal format');
+    // 3) Number format
+    console.assert(fmtMoney(1234.56).includes('1.234,56'), 'EU money format');
+    console.log('%cMini tests passed','color:#6ee7b7');
+  }catch(err){ console.warn('Mini tests failed', err); }
+
+  // Init
   render();
 })();
 </script>
