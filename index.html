@@ -123,12 +123,10 @@
       <table class="table" id="table">
         <thead>
           <tr>
-            <th style="width:200px">Start</th>
-            <th style="width:200px">End</th>
-            <th style="width:110px">Duration</th>
+            <th style="width:220px">Timing</th>
             <th style="width:150px">Revenue loss (€)</th>
             <th>Learnings + Timeline</th>
-            <th style="width:180px">Actions</th>
+            <th style="width:220px">Actions</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -152,7 +150,7 @@
 
 <script>
 (function(){
-  const LS_KEY = 'downtimeLog_v3'; // new schema (date + timeline clock times)
+  const LS_KEY = 'downtimeLog_v4'; // current schema (date + timeline clock times)
   const currency = new Intl.NumberFormat('de-DE', { style:'decimal', minimumFractionDigits:2, maximumFractionDigits:2 });
 
   // DOM
@@ -258,14 +256,17 @@
       const endCell = endDT? fmtDT(endDT) : '–';
       const row = document.createElement('tr');
       row.innerHTML = `
-        <td>${startCell}</td>
-        <td>${endCell}</td>
-        <td><span class="${pillClass}">${fmtDuration(duration)}</span></td>
+        <td>
+          <div><strong>Start:</strong> ${startCell}</div>
+          <div><strong>End:</strong> ${endCell}</div>
+          <div><strong>Duration:</strong> <span class="${pillClass}">${fmtDuration(duration)}</span></div>
+        </td>
         <td>€ ${fmtMoney(e.revenue)}</td>
         <td>${renderLearnings(e.learnings)}<div style="margin-top:6px">${eventsHtml}</div></td>
         <td><div class="flex">
           <button data-id="${e.id}" data-act="edit">Edit</button>
           <button data-id="${e.id}" data-act="dup">Duplicate</button>
+          <button data-id="${e.id}" data-act="md">Copy MD</button>
           <button data-id="${e.id}" data-act="pm">Postmortem</button>
           <button data-id="${e.id}" data-act="del" style="color:#ffb4b4">Delete</button>
         </div></td>`;
@@ -342,11 +343,58 @@
     return html;
   }
 
+  // ---- Markdown builder ----
+  function buildIncidentMarkdown(entry){
+    const times=(entry.events||[]).map(x=>parseHHMM(x.time)).filter(x=>x!=null);
+    const first=times.length? Math.min(...times): null;
+    const last=times.length? Math.max(...times): null;
+    const start= entry.date && first!=null ? combineDateTime(entry.date, hhmm(first)) : null;
+    const end  = entry.date && last!=null  ? combineDateTime(entry.date, hhmm(last))  : null;
+    const duration = (first!=null && last!=null) ? Math.max(0,last-first) : (entry.duration||0);
+    const lines=[];
+    lines.push(`# Incident Postmortem – ${entry.date || 'Unknown date'}`);
+    lines.push('');
+    lines.push('## Summary');
+    lines.push(`- **Date:** ${entry.date||'-'}`);
+    lines.push(`- **Start:** ${start? fmtDT(start): '-'}`);
+    lines.push(`- **End:** ${end? fmtDT(end): '-'}`);
+    lines.push(`- **Duration:** ${fmtDuration(duration)}`);
+    lines.push(`- **Revenue loss:** € ${fmtMoney(entry.revenue)}`);
+    lines.push('');
+    lines.push('## Learnings / Root cause');
+    lines.push(entry.learnings? entry.learnings : '_(none provided)_');
+    lines.push('');
+    lines.push('## Timeline');
+    if(entry.events && entry.events.length){
+      const evs = entry.events.slice().sort((a,b)=> (parseHHMM(a.time)||0)-(parseHHMM(b.time)||0));
+      for(const ev of evs){ lines.push(`- ${ev.time || '--:--'} — ${ev.note||''}`); }
+    } else {
+      lines.push('_(no events)_');
+    }
+    lines.push('');
+    lines.push('## Follow-ups');
+    lines.push('- [ ] ');
+    return lines.join('\n');
+  }
+
+  async function copyIncidentMarkdown(entry){
+    const text = buildIncidentMarkdown(entry);
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+      }
+      alert('Markdown copied to clipboard');
+    }catch(err){
+      console.warn('Clipboard copy failed', err); alert('Could not copy to clipboard');
+    }
+  }
+
   function openPostmortemWindow(entry){
     const w=window.open('', '_blank');
     if(!w){ alert('Pop-up blocked. Please allow pop-ups to view the postmortem.'); return; }
     w.document.open();
-    // Avoid unescaped template issues by writing a concatenated string
     w.document.write(buildPostmortemHTML(entry));
     w.document.close();
   }
@@ -386,6 +434,9 @@
       learningsEl.value=row.learnings||'';
       setEventsInForm(row.events||[]);
       window.scrollTo({top:0, behavior:'smooth'});
+    }
+    if(act==='md'){
+      copyIncidentMarkdown(row);
     }
     if(act==='pm'){
       openPostmortemWindow(row);
@@ -432,17 +483,24 @@
     save(); render();
   });
 
-  // Mini tests
+  // Mini tests (do not change unless broken)
   try{
     console.assert(fmtMoney(1234.56).includes('1.234,56'),'EU money format');
     console.assert(parseHHMM('00:00')===0 && parseHHMM('23:59')===1439, 'HH:MM parser');
     const dur = (parseHHMM('11:40') - parseHHMM('10:05'));
     console.assert(dur===95,'Duration by timeline');
     console.assert(renderLearnings('a\nb')==='a<br>b','Learnings newline render');
-    // Postmortem build test (sanity: ensure no raw template markers leak)
+    // Postmortem build test (ensure no raw ${} leaks into document.write)
     const _pmSample = { id:'t1', date:'2024-01-01', revenue:1234.5, learnings:'L1\nL2', events:[{time:'10:00',note:'Start'},{time:'11:30',note:'End'}] };
     const _html = buildPostmortemHTML(_pmSample);
     console.assert(typeof _html==='string' && !_html.includes('${'), 'Postmortem HTML contains no raw ${}');
+    // Markdown build tests
+    (function(){
+      const s = {id:'t2', date:'2024-02-02', revenue:999.99, learnings:'A\nB', events:[{time:'10:05',note:'Start'},{time:'11:40',note:'End'}]};
+      const md=buildIncidentMarkdown(s);
+      console.assert(typeof md==='string' && md.includes('Incident Postmortem') && md.includes('## Summary'), 'buildIncidentMarkdown basic');
+      console.assert(md.includes('€'), 'buildIncidentMarkdown includes euro');
+    })();
     console.log('%cMini tests passed','color:#6ee7b7');
   }catch(err){ console.warn('Mini tests failed', err); }
 
