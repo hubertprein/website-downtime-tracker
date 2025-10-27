@@ -67,6 +67,7 @@
       <input type="file" id="importFile" accept="application/json" style="display:none"/>
       <button id="importBtn">Import JSON</button>
       <button id="clearBtn">Clear all</button>
+      <button id="themeBtn" title="Preview the print theme">Preview print theme</button>
       <span class="muted">EUR fixed • Data saved locally (localStorage)</span>
     </div>
   </div>
@@ -128,7 +129,7 @@
             <th style="width:110px">Duration</th>
             <th style="width:150px">Revenue loss (€)</th>
             <th>Learnings + Timeline</th>
-            <th style="width:120px">Actions</th>
+            <th style="width:180px">Actions</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -170,6 +171,7 @@
   const statDowntime = document.getElementById('statDowntime');
   const statMTTR = document.getElementById('statMTTR');
   const statRevenue = document.getElementById('statRevenue');
+  const themeBtn = document.getElementById('themeBtn');
 
   // Data
   function save(){ localStorage.setItem(LS_KEY, JSON.stringify(data)); }
@@ -264,9 +266,10 @@
         <td>€ ${fmtMoney(e.revenue)}</td>
         <td>${renderLearnings(e.learnings)}<div style="margin-top:6px">${eventsHtml}</div></td>
         <td><div class="flex">
-          <button data-id="${e.id}" data-act="edit">Edit</button>
-          <button data-id="${e.id}" data-act="dup">Duplicate</button>
-          <button data-id="${e.id}" data-act="del" style="color:#ffb4b4">Delete</button>
+          <button data-id=\"${e.id}\" data-act=\"edit\">Edit<\/button>
+          <button data-id=\"${e.id}\" data-act=\"dup\">Duplicate<\/button>
+          <button data-id=\"${e.id}\" data-act=\"pm\">Postmortem<\/button>
+          <button data-id=\"${e.id}\" data-act=\"del\" style=\"color:#ffb4b4\">Delete<\/button>
         </div></td>`;
       tbody.appendChild(row);
     }
@@ -287,6 +290,95 @@
     statRevenue.textContent=fmtMoney(totalRev);
   }
 
+  // ---- Postmortem generation ----
+  function computeIncidentTimes(entry){
+    const times=(entry.events||[]).map(x=>parseHHMM(x.time)).filter(x=>x!=null);
+    if(!entry.date || times.length<2) return {start:null,end:null,duration:0};
+    const first=Math.min(...times), last=Math.max(...times);
+    return { start: combineDateTime(entry.date, hhmm(first)), end: combineDateTime(entry.date, hhmm(last)), duration: Math.max(0,last-first) };
+  }
+
+  function buildPostmortemMD(entry){
+    const {start,end,duration}=computeIncidentTimes(entry);
+    const durationStr=fmtDuration(duration);
+    const revenueStr=`€ ${fmtMoney(entry.revenue)}`;
+    const lines=[];
+    lines.push(`# Incident Postmortem – ${entry.date || 'Unknown date'}`);
+    lines.push('');
+    lines.push('## Summary');
+    lines.push(`- **Date:** ${entry.date||'-'}`);
+    lines.push(`- **Start:** ${start? start.toLocaleString():'-'}`);
+    lines.push(`- **End:** ${end? end.toLocaleString():'-'}`);
+    lines.push(`- **Duration:** ${durationStr}`);
+    lines.push(`- **Revenue loss:** ${revenueStr}`);
+    lines.push('');
+    lines.push('## Learnings / Root cause');
+    lines.push(entry.learnings? entry.learnings : '_(none provided)_');
+    lines.push('');
+    lines.push('## Timeline');
+    if(entry.events && entry.events.length){
+      entry.events.slice().sort((a,b)=> (parseHHMM(a.time)||0)-(parseHHMM(b.time)||0)).forEach(ev=>{
+        const ts = ev.time || '--:--';
+        lines.push(`- ${ts} — ${ev.note||''}`);
+      });
+    } else {
+      lines.push('_(no events)_');
+    }
+    lines.push('');
+    lines.push('## Follow-ups');
+    lines.push('- [ ] ');
+    return lines.join('\n');
+  }
+
+  function buildPostmortemHTML(entry){
+    const {start,end,duration}=computeIncidentTimes(entry);
+    const startStr=start? fmtDT(start): '–';
+    const endStr=end? fmtDT(end): '–';
+    const md = buildPostmortemMD(entry);
+    const safeLearn=renderLearnings(entry.learnings||'');
+    const eventsHTML = (entry.events||[]).slice().sort((a,b)=> (parseHHMM(a.time)||0)-(parseHHMM(b.time)||0)).map(ev=>`<tr><td style=\\"white-space:nowrap\\">${esc(ev.time||'--:--')}</td><td>${esc(ev.note||'')}</td></tr>`).join('');
+    return `<!DOCTYPE html><html><head><meta charset=\\"utf-8\\"><title>Postmortem ${entry.date||''}</title>
+      <style>body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;margin:0;padding:24px;background:#0b0f14;color:#e8eef6}
+      .card{background:#111826;border:1px solid #223041;border-radius:12px;padding:16px;margin-bottom:16px}
+      h1,h2{margin:.2rem 0 .6rem} h1{font-size:22px} h2{font-size:16px;color:#9fb2c7}
+      table{width:100%;border-collapse:collapse} td,th{border-bottom:1px solid #223041;padding:8px 6px;text-align:left}
+      .btns{display:flex;gap:8px;margin-bottom:12px}
+      button{background:#1e293b;border:1px solid #223041;border-radius:10px;color:#e8eef6;padding:8px 10px;cursor:pointer}
+      pre{white-space:pre-wrap;background:#0d1320;border:1px solid #223041;padding:12px;border-radius:10px}
+        @media print{
+          body{background:#fff;color:#000}
+          .btns{display:none}
+          .card{box-shadow:none;border-color:#bbb}
+          h2{color:#111}
+        }
+        @page{ margin: 16mm }
+      </style></head><body>
+      <div class=\\"btns\\"> <button onclick=\\"window.print()\\">Print<\/button> <button id=\\"dlMd\\">Download Markdown<\/button> <\/div>
+      <div class=\\"card\\"> <h1>Incident Postmortem — ${esc(entry.date||'Unknown date')}</h1>
+        <table>
+          <tr><th style=\\"width:160px\\">Start<\/th><td>${startStr}<\/td><\/tr>
+          <tr><th>End<\/th><td>${endStr}<\/td><\/tr>
+          <tr><th>Duration<\/th><td>${fmtDuration(duration)}<\/td><\/tr>
+          <tr><th>Revenue loss<\/th><td>€ ${fmtMoney(entry.revenue)}<\/td><\/tr>
+        <\/table>
+      <\/div>
+      <div class=\\"card\\"><h2>Learnings \\/ Root cause<\/h2><div>${safeLearn||'<span style=\\\\"color:#9fb2c7\\\\">(none)<\/span>'}<\/div><\/div>
+      <div class=\\"card\\"><h2>Timeline<\/h2>
+        <table><thead><tr><th style=\\"width:120px\\">Time<\/th><th>Event<\/th><\/tr><\/thead><tbody>${eventsHTML||'<tr><td colspan=2>(no events)<\/td><\/tr>'}<\/tbody><\/table>
+      <\/div>
+      <div class=\\"card\\"><h2>Markdown<\/h2><pre id=\\"md\\"><\/pre><\/div>
+      <script>const mdStr=${'${JSON.stringify(md)}'}; document.getElementById('md').textContent=mdStr; document.getElementById('dlMd').addEventListener('click', ()=>{ const blob=new Blob([mdStr],{type:'text/markdown'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='postmortem-${(entry.date||'incident').replace(/[^0-9-]/g,'')}.md'; a.click(); URL.revokeObjectURL(a.href); });<\/script>
+      <\/body><\/html>`;
+  }
+
+  function openPostmortemWindow(entry){
+    const w=window.open('', '_blank');
+    if(!w){ alert('Pop-up blocked. Please allow pop-ups to view the postmortem.'); return; }
+    w.document.open();
+    w.document.write(buildPostmortemHTML(entry));
+    w.document.close();
+  }
+
   // Events
   addEventBtn.addEventListener('click', ()=> addEventRow('', ''));
   addNowBtn.addEventListener('click', ()=>{
@@ -295,6 +387,14 @@
     addEventRow(v, '');
     calcDurationFromTimeline();
   });
+  // Print theme preview toggle
+  if (themeBtn) {
+    themeBtn.addEventListener('click', ()=>{
+      document.body.classList.toggle('print-preview');
+      themeBtn.textContent = document.body.classList.contains('print-preview') ? 'Exit print preview' : 'Preview print theme';
+    });
+  }
+
 
   form.addEventListener('submit', ev=>{
     ev.preventDefault();
@@ -322,6 +422,9 @@
       learningsEl.value=row.learnings||'';
       setEventsInForm(row.events||[]);
       window.scrollTo({top:0, behavior:'smooth'});
+    }
+    if(act==='pm'){
+      openPostmortemWindow(row);
     }
     if(act==='dup'){
       data.entries.push({...row, id: Math.random().toString(36).slice(2,10)}); save(); render();
@@ -372,6 +475,10 @@
     const dur = (parseHHMM('11:40') - parseHHMM('10:05'));
     console.assert(dur===95,'Duration by timeline');
     console.assert(renderLearnings('a\nb')==='a<br>b','Learnings newline render');
+    // Postmortem build test
+    const _pmSample = { id:'t1', date:'2024-01-01', revenue:1234.5, learnings:'L1\nL2', events:[{time:'10:00',note:'Start'},{time:'11:30',note:'End'}] };
+    const _md = buildPostmortemMD(_pmSample);
+    console.assert(typeof _md === 'string' && _md.includes('Incident Postmortem'), 'Postmortem MD build');
     console.log('%cMini tests passed','color:#6ee7b7');
   }catch(err){ console.warn('Mini tests failed', err); }
 
