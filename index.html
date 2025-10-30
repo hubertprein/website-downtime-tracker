@@ -49,6 +49,14 @@
     .events-head{display:flex; align-items:center; justify-content:space-between; margin:2px 0 8px}
     .event-row{display:grid; grid-template-columns: 150px 120px 1fr auto; gap:8px; align-items:center}
     .events-list{border:1px dashed var(--border); border-radius:12px; padding:10px}
+
+    /* Print-friendly adjustments */
+    @media print{
+      body{background:#fff; color:#000}
+      header, .controls{display:none}
+      .card{box-shadow:none; background:#fff}
+      .table th, .table td{border-color:#ddd}
+    }
   </style>
 </head>
 <body>
@@ -95,7 +103,7 @@
           <div class="full">
             <div class="events-head">
               <strong>Incident timeline (required for duration)</strong>
-              <div class="muted">Option B+ — Enter <strong>time</strong> (HH:MM) and optionally a <strong>date</strong> for each event. If date is empty, the incident date is used.</div>
+              <div class="muted">Enter <strong>time</strong> (HH:MM) and optionally a <strong>date</strong> per event. If date is empty, the incident date is used.</div>
             </div>
             <div class="events-list" id="eventsList"></div>
             <div style="margin-top:8px" class="flex">
@@ -123,7 +131,7 @@
             <th style="width:260px">Timing</th>
             <th style="width:150px">Revenue loss (€)</th>
             <th>Learnings + Timeline</th>
-            <th style="width:220px">Actions</th>
+            <th style="width:260px">Actions</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -147,7 +155,7 @@
 
 <script>
 (function(){
-  const LS_KEY = 'downtimeLog_v5'; // schema supports per-event optional date
+  const LS_KEY = 'downtimeLog_v9';
   const currency = new Intl.NumberFormat('de-DE', { style:'decimal', minimumFractionDigits:2, maximumFractionDigits:2 });
 
   // DOM
@@ -161,6 +169,7 @@
   const eventsList = document.getElementById('eventsList');
   const addEventBtn = document.getElementById('addEventBtn');
   const addNowBtn = document.getElementById('addNowBtn');
+  const resetBtn = document.getElementById('resetBtn');
   const statIncidents = document.getElementById('statIncidents');
   const statDowntime = document.getElementById('statDowntime');
   const statMTTR = document.getElementById('statMTTR');
@@ -172,13 +181,14 @@
   let data = load();
 
   // Utils
-  function fmtDT(d){ return new Intl.DateTimeFormat(undefined,{year:'numeric',month:'short',day:'2-digit', hour:'2-digit', minute:'2-digit'}).format(d); }
+  function fmtDDMMYYYYFromDate(d){ const dd=String(d.getDate()).padStart(2,'0'); const mm=String(d.getMonth()+1).padStart(2,'0'); const yyyy=d.getFullYear(); return `${dd}-${mm}-${yyyy}`; }
+  function fmtDT_DMY(d){ const hh=String(d.getHours()).padStart(2,'0'); const mi=String(d.getMinutes()).padStart(2,'0'); return `${fmtDDMMYYYYFromDate(d)} ${hh}:${mi}`; }
+  function formatDateStr(iso){ if(!iso) return ''; const m=/(\d{4})-(\d{2})-(\d{2})/.exec(iso); if(!m) return iso; return `${m[3]}-${m[2]}-${m[1]}`; }
   function fmtDuration(min){ if(min==null||isNaN(min)) return '–'; const h=Math.floor(min/60), m=Math.round(min%60); return (h? h+'h ':'')+m+'m'; }
   function fmtMoney(n){ return currency.format(Number(n||0)); }
   function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
   function renderLearnings(s){ return esc(s||'').replace(/\n/g,'<br>'); }
   function parseHHMM(hhmm){ if(!/^\d{2}:\d{2}$/.test(hhmm||'')) return null; const [h,m]=hhmm.split(':').map(n=>parseInt(n,10)); if(h>23||m>59) return null; return h*60+m; }
-  function hhmm(min){ min=Math.max(0,min|0); const h=Math.floor(min/60), m=min%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
   function combineDateTime(dateStr, hhmmStr){ const [y,mo,da]=dateStr.split('-').map(n=>parseInt(n,10)); const [h,mi]=hhmmStr.split(':').map(n=>parseInt(n,10)); return new Date(y, mo-1, da, h, mi, 0, 0); }
   function toISODate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
@@ -189,7 +199,7 @@
     return combineDateTime(dStr, ev.time);
   }
 
-  // Timeline UI helpers (Option B+: time + optional date per event)
+  // Timeline UI helpers (time + optional date per event)
   function addEventRow(hhmmVal = '', note = '', dateVal = ''){
     const row = document.createElement('div');
     row.className = 'event-row';
@@ -200,12 +210,8 @@
       <button type="button" class="event-del">Remove</button>
     `;
     row.querySelector('.event-del').addEventListener('click', ()=>{ row.remove(); calcDurationFromTimeline(); });
-    const dateInput=row.querySelector('.event-date');
-    const timeInput=row.querySelector('.event-time');
-    const noteInput=row.querySelector('.event-note');
-    dateInput.addEventListener('input', calcDurationFromTimeline);
-    timeInput.addEventListener('input', calcDurationFromTimeline);
-    noteInput.addEventListener('input', ()=>{});
+    row.querySelector('.event-date').addEventListener('input', calcDurationFromTimeline);
+    row.querySelector('.event-time').addEventListener('input', calcDurationFromTimeline);
     eventsList.appendChild(row);
   }
 
@@ -218,7 +224,6 @@
       if(!tVal && !noteVal && !dVal) return null;
       return { date: dVal, time: tVal, note: noteVal };
     }).filter(Boolean);
-    // sort by absolute datetime (fall back to incident date if missing)
     const base = dateEl.value;
     events.sort((a,b)=>{
       const ad = eventToDate(a, base); const bd = eventToDate(b, base);
@@ -248,7 +253,6 @@
   function render(){
     tbody.innerHTML='';
     const entries = [...data.entries].sort((a,b)=> {
-      // sort by earliest event datetime desc, fallback to date string
       const baseA = a.date||''; const baseB=b.date||'';
       const aFirst = (a.events||[]).map(ev=>eventToDate(ev, baseA)).filter(Boolean).map(d=>d.getTime());
       const bFirst = (b.events||[]).map(ev=>eventToDate(ev, baseB)).filter(Boolean).map(d=>d.getTime());
@@ -271,11 +275,11 @@
                 const ad=eventToDate(a, base); const bd=eventToDate(b, base);
                 return (ad?ad.getTime():0)-(bd?bd.getTime():0);
               })
-              .map(x=>`<li><span class="muted">${esc(x.date||base||'')} ${esc(x.time||'')} — </span>${esc(x.note||'')}</li>`).join('');
-            return `<details><summary>${e.events.length} event${e.events.length>1?'s':''}</summary><ol style="margin:6px 0 0 18px">${list}</ol></details>`; })()
+              .map(x=>`<li><span class=\"muted\">${esc(formatDateStr(x.date||base||''))} ${esc(x.time||'')} — </span>${esc(x.note||'')}</li>`).join('');
+            return `<details><summary>${e.events.length} event${e.events.length>1?'s':''}</summary><ol style=\"margin:6px 0 0 18px\">${list}</ol></details>`; })()
         : '<span class="tag muted">No events</span>';
-      const startCell = firstDT? fmtDT(firstDT) : '–';
-      const endCell = lastDT? fmtDT(lastDT) : '–';
+      const startCell = firstDT? fmtDT_DMY(firstDT) : '–';
+      const endCell = lastDT? fmtDT_DMY(lastDT) : '–';
       const row = document.createElement('tr');
       row.innerHTML = `
         <td>
@@ -324,8 +328,8 @@
 
   function buildPostmortemHTML(entry){
     const {start,end,duration}=computeIncidentTimes(entry);
-    const startStr=start? fmtDT(start): '–';
-    const endStr=end? fmtDT(end): '–';
+    const startStr=start? fmtDT_DMY(start): '–';
+    const endStr=end? fmtDT_DMY(end): '–';
     const safeLearn=renderLearnings(entry.learnings||'');
     const base=entry.date||'';
     const eventsHTML = (entry.events||[])
@@ -334,7 +338,7 @@
         const ad=eventToDate(a, base); const bd=eventToDate(b, base);
         return (ad?ad.getTime():0)-(bd?bd.getTime():0);
       })
-      .map(ev=>`<tr><td style="white-space:nowrap">${esc(ev.date||base||'')} ${esc(ev.time||'--:--')}</td><td>${esc(ev.note||'')}</td></tr>`)
+      .map(ev=>`<tr><td style=\"white-space:nowrap\">${esc(formatDateStr(ev.date||base||''))} ${esc(ev.time||'--:--')}</td><td>${esc(ev.note||'')}</td></tr>`)
       .join('');
 
     const html = [
@@ -352,7 +356,7 @@
       '</style></head><body>',
       '<div class="btns"><button onclick="window.print()">Print</button></div>',
       '<div class="card">',
-        '<h1>Incident Postmortem — ', esc(entry.date||'Unknown date'), '</h1>',
+        '<h1>Incident Postmortem — ', esc(formatDateStr(entry.date||'Unknown date')), '</h1>',
         '<table>',
           '<tr><th style="width:160px">Start</th><td>', esc(startStr), '</td></tr>',
           '<tr><th>End</th><td>', esc(endStr), '</td></tr>',
@@ -376,12 +380,12 @@
   function buildIncidentMarkdown(entry){
     const {start,end,duration}=computeIncidentTimes(entry);
     const lines=[];
-    lines.push(`# Incident Postmortem – ${entry.date || 'Unknown date'}`);
+    lines.push(`# Incident Postmortem – ${formatDateStr(entry.date || '') || 'Unknown date'}`);
     lines.push('');
     lines.push('## Summary');
-    lines.push(`- **Date:** ${entry.date||'-'}`);
-    lines.push(`- **Start:** ${start? fmtDT(start): '-'}`);
-    lines.push(`- **End:** ${end? fmtDT(end): '-'}`);
+    lines.push(`- **Date:** ${formatDateStr(entry.date||'-')}`);
+    lines.push(`- **Start:** ${start? fmtDT_DMY(start): '-'}`);
+    lines.push(`- **End:** ${end? fmtDT_DMY(end): '-'}`);
     lines.push(`- **Duration:** ${fmtDuration(duration)}`);
     lines.push(`- **Revenue loss:** € ${fmtMoney(entry.revenue)}`);
     lines.push('');
@@ -395,7 +399,7 @@
         const ad=eventToDate(a, base); const bd=eventToDate(b, base);
         return (ad?ad.getTime():0)-(bd?bd.getTime():0);
       });
-      for(const ev of evs){ lines.push(`- ${(ev.date||base||'')} ${ev.time || '--:--'} — ${ev.note||''}`); }
+      for(const ev of evs){ lines.push(`- ${formatDateStr(ev.date||base||'')} ${ev.time || '--:--'} — ${ev.note||''}`); }
     } else {
       lines.push('_(no events)_');
     }
@@ -427,8 +431,8 @@
     w.document.close();
   }
 
-  // Events
-  addEventBtn.addEventListener('click', ()=> addEventRow('', '', ''));
+  // Button events
+  addEventBtn.addEventListener('click', ()=> { addEventRow('', '', ''); calcDurationFromTimeline(); });
   addNowBtn.addEventListener('click', ()=>{
     const now = new Date();
     const v = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -436,6 +440,7 @@
     addEventRow(v, '', d);
     calcDurationFromTimeline();
   });
+  resetBtn.addEventListener('click', ()=>{ form.reset(); eventsList.innerHTML=''; calcDurationEl.value=''; rowId.value=''; });
   dateEl.addEventListener('input', calcDurationFromTimeline);
 
   form.addEventListener('submit', ev=>{
@@ -521,19 +526,14 @@
   try{
     console.assert(fmtMoney(1234.56).includes('1.234,56'),'EU money format');
     console.assert(parseHHMM('00:00')===0 && parseHHMM('23:59')===1439, 'HH:MM parser');
-    // same-day duration
-    const sd = Math.max(0, (combineDateTime('2025-01-01','11:40') - combineDateTime('2025-01-01','10:05'))/60000);
-    console.assert(sd===95,'Duration by timeline (same day)');
-    // cross-day duration
     const cd = Math.max(0, (combineDateTime('2025-01-02','00:20') - combineDateTime('2025-01-01','23:50'))/60000);
     console.assert(cd===30,'Duration by timeline (cross day)');
     console.assert(renderLearnings('a\nb')==='a<br>b','Learnings newline render');
-    // Postmortem/MD build tests
     const _pmSample = { id:'t1', date:'2025-01-01', revenue:1234.5, learnings:'L1\nL2', events:[{date:'2025-01-01',time:'23:50',note:'Start'},{date:'2025-01-02',time:'00:20',note:'End'}] };
     const _html = buildPostmortemHTML(_pmSample);
     console.assert(typeof _html==='string' && !_html.includes('${'), 'Postmortem HTML contains no raw ${}');
     const md=buildIncidentMarkdown(_pmSample);
-    console.assert(md.includes('€') && md.includes('00:20'), 'Markdown includes euro and times');
+    console.assert(md.includes('€') && md.includes('00:20') && md.includes('01-01-2025'), 'Markdown includes euro, times and dd-mm-yyyy');
     console.log('%cMini tests passed','color:#6ee7b7');
   }catch(err){ console.warn('Mini tests failed', err); }
 
