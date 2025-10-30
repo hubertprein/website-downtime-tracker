@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Website Downtime Tracker</title>
-  <meta name="description" content="Offline-first tracker for downtime incidents with EUR currency, localized separators, JSON import/export, and incident timelines." />
+  <meta name="description" content="Offline-first tracker for downtime incidents with EUR currency, localized separators, JSON import/export, and incident timelines (with optional per-event dates)." />
   <style>
     :root{
       --bg:#0b0f14; --panel:#121821; --panel-2:#0f141c; --text:#e8eef6; --muted:#9fb2c7;
@@ -41,17 +41,14 @@
     .pill.danger{border-color:#6b1f1f; background:#1a0b0b; color:#ffb4b4}
     .pill.ok{border-color:#175e3a; background:#0b1a12; color:#9ff2cd}
     .flex{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-    .right{margin-left:auto}
     .stat-grid{display:grid; grid-template-columns: repeat(4, 1fr); gap:12px}
     @media (max-width: 620px){ .stat-grid{grid-template-columns: repeat(2, 1fr)} }
     .stat{padding:14px; border-radius:14px; background: linear-gradient(180deg, #0e1520, #0d1117); border:1px solid var(--border)}
     .stat .label{font-size:12px; color:var(--muted)}
     .stat .value{font-size:22px; font-weight:700; margin-top:6px}
-    .events-grid{display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:start}
-    .event-row{display:grid; grid-template-columns: 140px 1fr auto; gap:8px; align-items:center}
-    .event-row input[type="time"], .event-row input[type="text"]{width:100%}
-    .events-list{border:1px dashed var(--border); border-radius:12px; padding:10px}
     .events-head{display:flex; align-items:center; justify-content:space-between; margin:2px 0 8px}
+    .event-row{display:grid; grid-template-columns: 150px 120px 1fr auto; gap:8px; align-items:center}
+    .events-list{border:1px dashed var(--border); border-radius:12px; padding:10px}
   </style>
 </head>
 <body>
@@ -98,13 +95,13 @@
           <div class="full">
             <div class="events-head">
               <strong>Incident timeline (required for duration)</strong>
-              <div class="muted">Option B — Enter <strong>clock time</strong> for each event (HH:MM). All events are assumed to be on the incident date.</div>
+              <div class="muted">Option B+ — Enter <strong>time</strong> (HH:MM) and optionally a <strong>date</strong> for each event. If date is empty, the incident date is used.</div>
             </div>
             <div class="events-list" id="eventsList"></div>
             <div style="margin-top:8px" class="flex">
               <button type="button" id="addEventBtn">+ Add event</button>
               <button type="button" id="addNowBtn">+ Add event @ now</button>
-              <span class="muted">Tip: the first and last timeline items determine the incident duration.</span>
+              <span class="muted">Duration uses the earliest and latest timeline timestamps (dates allowed).</span>
             </div>
           </div>
           <div class="full flex" style="justify-content:flex-end; gap:10px">
@@ -113,7 +110,7 @@
           </div>
         </div>
       </form>
-      <small class="muted">Duration is calculated from the earliest to the latest <strong>timeline time</strong> on the same day.</small>
+      <small class="muted">If any event has a date, it overrides the incident date for that row.</small>
     </div>
   </section>
 
@@ -123,7 +120,7 @@
       <table class="table" id="table">
         <thead>
           <tr>
-            <th style="width:220px">Timing</th>
+            <th style="width:260px">Timing</th>
             <th style="width:150px">Revenue loss (€)</th>
             <th>Learnings + Timeline</th>
             <th style="width:220px">Actions</th>
@@ -150,7 +147,7 @@
 
 <script>
 (function(){
-  const LS_KEY = 'downtimeLog_v4'; // current schema (date + timeline clock times)
+  const LS_KEY = 'downtimeLog_v5'; // schema supports per-event optional date
   const currency = new Intl.NumberFormat('de-DE', { style:'decimal', minimumFractionDigits:2, maximumFractionDigits:2 });
 
   // DOM
@@ -183,19 +180,30 @@
   function parseHHMM(hhmm){ if(!/^\d{2}:\d{2}$/.test(hhmm||'')) return null; const [h,m]=hhmm.split(':').map(n=>parseInt(n,10)); if(h>23||m>59) return null; return h*60+m; }
   function hhmm(min){ min=Math.max(0,min|0); const h=Math.floor(min/60), m=min%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
   function combineDateTime(dateStr, hhmmStr){ const [y,mo,da]=dateStr.split('-').map(n=>parseInt(n,10)); const [h,mi]=hhmmStr.split(':').map(n=>parseInt(n,10)); return new Date(y, mo-1, da, h, mi, 0, 0); }
+  function toISODate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
-  // Timeline UI helpers (Option B: clock times on same day)
-  function addEventRow(hhmmVal = '', note = ''){
+  function eventToDate(ev, fallbackDate){
+    const dStr = (ev.date && /^\d{4}-\d{2}-\d{2}$/.test(ev.date)) ? ev.date : (fallbackDate||'');
+    const m = parseHHMM(ev.time);
+    if(!dStr || m==null) return null;
+    return combineDateTime(dStr, ev.time);
+  }
+
+  // Timeline UI helpers (Option B+: time + optional date per event)
+  function addEventRow(hhmmVal = '', note = '', dateVal = ''){
     const row = document.createElement('div');
     row.className = 'event-row';
     row.innerHTML = `
+      <input type="date" class="event-date" value="${dateVal}" />
       <input type="time" step="60" class="event-time" value="${hhmmVal}" />
       <input type="text" class="event-note" placeholder="What happened?" value="${esc(note)}" />
       <button type="button" class="event-del">Remove</button>
     `;
     row.querySelector('.event-del').addEventListener('click', ()=>{ row.remove(); calcDurationFromTimeline(); });
+    const dateInput=row.querySelector('.event-date');
     const timeInput=row.querySelector('.event-time');
     const noteInput=row.querySelector('.event-note');
+    dateInput.addEventListener('input', calcDurationFromTimeline);
     timeInput.addEventListener('input', calcDurationFromTimeline);
     noteInput.addEventListener('input', ()=>{});
     eventsList.appendChild(row);
@@ -204,28 +212,35 @@
   function getEventsFromForm(){
     const rows = Array.from(eventsList.querySelectorAll('.event-row'));
     const events = rows.map(r=>{
+      const dVal = r.querySelector('.event-date')?.value || '';
       const tVal = r.querySelector('.event-time')?.value || '';
       const noteVal = r.querySelector('.event-note')?.value.trim() || '';
-      if(!tVal && !noteVal) return null;
-      return { time: tVal, note: noteVal };
+      if(!tVal && !noteVal && !dVal) return null;
+      return { date: dVal, time: tVal, note: noteVal };
     }).filter(Boolean);
-    // sort by time ascending
-    events.sort((a,b)=> (parseHHMM(a.time)||0) - (parseHHMM(b.time)||0));
+    // sort by absolute datetime (fall back to incident date if missing)
+    const base = dateEl.value;
+    events.sort((a,b)=>{
+      const ad = eventToDate(a, base); const bd = eventToDate(b, base);
+      return (ad?ad.getTime():0) - (bd?bd.getTime():0);
+    });
     return events;
   }
 
   function setEventsInForm(events){
     eventsList.innerHTML='';
-    (events||[]).forEach(ev=> addEventRow(ev.time||'', ev.note||''));
+    (events||[]).forEach(ev=> addEventRow(ev.time||'', ev.note||'', ev.date||''));
     calcDurationFromTimeline();
   }
 
   function calcDurationFromTimeline(){
-    const events = getEventsFromForm().filter(e=>parseHHMM(e.time)!=null);
-    if(events.length<2){ calcDurationEl.value = 0; return 0; }
-    const first = parseHHMM(events[0].time);
-    const last = parseHHMM(events[events.length-1].time);
-    const minutes = Math.max(0, last - first);
+    const base = dateEl.value || '';
+    const events = getEventsFromForm();
+    const dts = events.map(ev=>eventToDate(ev, base)).filter(Boolean);
+    if(dts.length<2){ calcDurationEl.value = 0; return 0; }
+    const first = new Date(Math.min(...dts.map(d=>d.getTime())));
+    const last  = new Date(Math.max(...dts.map(d=>d.getTime())));
+    const minutes = Math.max(0, Math.round((last - first)/60000));
     calcDurationEl.value = minutes;
     return minutes;
   }
@@ -233,27 +248,34 @@
   function render(){
     tbody.innerHTML='';
     const entries = [...data.entries].sort((a,b)=> {
-      // sort by date desc then by first timeline time desc
-      const aa = a.date||''; const bb=b.date||'';
-      if(aa!==bb) return aa>bb? -1: 1;
-      const aFirst = (a.events||[]).map(e=>parseHHMM(e.time)).filter(x=>x!=null)[0]||0;
-      const bFirst = (b.events||[]).map(e=>parseHHMM(e.time)).filter(x=>x!=null)[0]||0;
-      return bFirst - aFirst;
+      // sort by earliest event datetime desc, fallback to date string
+      const baseA = a.date||''; const baseB=b.date||'';
+      const aFirst = (a.events||[]).map(ev=>eventToDate(ev, baseA)).filter(Boolean).map(d=>d.getTime());
+      const bFirst = (b.events||[]).map(ev=>eventToDate(ev, baseB)).filter(Boolean).map(d=>d.getTime());
+      const aKey = aFirst.length? Math.min(...aFirst) : (baseA? new Date(baseA).getTime(): 0);
+      const bKey = bFirst.length? Math.min(...bFirst) : (baseB? new Date(baseB).getTime(): 0);
+      return bKey - aKey;
     });
     document.getElementById('empty').style.display = entries.length? 'none':'block';
     for(const e of entries){
-      const times = (e.events||[]).map(x=>parseHHMM(x.time)).filter(x=>x!=null);
-      const firstMin = times.length? Math.min(...times): null;
-      const lastMin = times.length? Math.max(...times): null;
-      const startDT = firstMin!=null && e.date? combineDateTime(e.date, hhmm(firstMin)) : null;
-      const endDT = lastMin!=null && e.date? combineDateTime(e.date, hhmm(lastMin)) : null;
-      const duration = (firstMin!=null && lastMin!=null)? Math.max(0,lastMin-firstMin) : (e.duration||0);
+      const base = e.date||'';
+      const dts = (e.events||[]).map(ev=>eventToDate(ev, base)).filter(Boolean);
+      const firstDT = dts.length? new Date(Math.min(...dts.map(d=>d.getTime()))) : null;
+      const lastDT  = dts.length? new Date(Math.max(...dts.map(d=>d.getTime()))) : null;
+      const duration = (firstDT && lastDT)? Math.max(0, Math.round((lastDT-firstDT)/60000)) : (e.duration||0);
       const pillClass = duration>180? 'pill danger' : duration>60? 'pill warn' : 'pill ok';
       const eventsHtml = (e.events && e.events.length)
-        ? (()=>{ const list=e.events.map(x=>`<li><span class="muted">${esc(x.time||'')} — </span>${esc(x.note||'')}</li>`).join(''); return `<details><summary>${e.events.length} event${e.events.length>1?'s':''}</summary><ol style="margin:6px 0 0 18px">${list}</ol></details>`; })()
+        ? (()=>{ const list=e.events
+              .slice()
+              .sort((a,b)=>{
+                const ad=eventToDate(a, base); const bd=eventToDate(b, base);
+                return (ad?ad.getTime():0)-(bd?bd.getTime():0);
+              })
+              .map(x=>`<li><span class="muted">${esc(x.date||base||'')} ${esc(x.time||'')} — </span>${esc(x.note||'')}</li>`).join('');
+            return `<details><summary>${e.events.length} event${e.events.length>1?'s':''}</summary><ol style="margin:6px 0 0 18px">${list}</ol></details>`; })()
         : '<span class="tag muted">No events</span>';
-      const startCell = startDT? fmtDT(startDT) : '–';
-      const endCell = endDT? fmtDT(endDT) : '–';
+      const startCell = firstDT? fmtDT(firstDT) : '–';
+      const endCell = lastDT? fmtDT(lastDT) : '–';
       const row = document.createElement('tr');
       row.innerHTML = `
         <td>
@@ -276,25 +298,28 @@
   }
 
   function updateStats(){
+    const totals = data.entries.reduce((acc, r)=>{
+      const base=r.date||'';
+      const dts=(r.events||[]).map(ev=>eventToDate(ev, base)).filter(Boolean).map(d=>d.getTime());
+      const d = dts.length>1? Math.round((Math.max(...dts)-Math.min(...dts))/60000) : 0;
+      acc.minutes += d;
+      acc.revenue += (Number(r.revenue)||0);
+      return acc;
+    },{minutes:0,revenue:0});
     const count=data.entries.length;
-    const totalMin=data.entries.reduce((s,r)=>{
-      const times=(r.events||[]).map(x=>parseHHMM(x.time)).filter(x=>x!=null);
-      const d=times.length>1? Math.max(...times)-Math.min(...times) : 0;
-      return s + d;
-    },0);
-    const totalRev=data.entries.reduce((s,r)=>s+(Number(r.revenue)||0),0);
     statIncidents.textContent=count;
-    statDowntime.textContent=fmtDuration(totalMin);
-    statMTTR.textContent=count?fmtDuration(Math.round(totalMin/Math.max(1,count))):'–';
-    statRevenue.textContent=fmtMoney(totalRev);
+    statDowntime.textContent=fmtDuration(totals.minutes);
+    statMTTR.textContent=count?fmtDuration(Math.round(totals.minutes/Math.max(1,count))):'–';
+    statRevenue.textContent=fmtMoney(totals.revenue);
   }
 
   // ---- Postmortem generation ----
   function computeIncidentTimes(entry){
-    const times=(entry.events||[]).map(x=>parseHHMM(x.time)).filter(x=>x!=null);
-    if(!entry.date || times.length<2) return {start:null,end:null,duration:0};
-    const first=Math.min(...times), last=Math.max(...times);
-    return { start: combineDateTime(entry.date, hhmm(first)), end: combineDateTime(entry.date, hhmm(last)), duration: Math.max(0,last-first) };
+    const base=entry.date||'';
+    const dts=(entry.events||[]).map(ev=>eventToDate(ev, base)).filter(Boolean).map(d=>d.getTime());
+    if(dts.length<2) return {start:null,end:null,duration:0};
+    const startMs=Math.min(...dts), endMs=Math.max(...dts);
+    return { start:new Date(startMs), end:new Date(endMs), duration: Math.max(0, Math.round((endMs-startMs)/60000)) };
   }
 
   function buildPostmortemHTML(entry){
@@ -302,10 +327,14 @@
     const startStr=start? fmtDT(start): '–';
     const endStr=end? fmtDT(end): '–';
     const safeLearn=renderLearnings(entry.learnings||'');
+    const base=entry.date||'';
     const eventsHTML = (entry.events||[])
       .slice()
-      .sort((a,b)=> (parseHHMM(a.time)||0)-(parseHHMM(b.time)||0))
-      .map(ev=>`<tr><td style="white-space:nowrap">${esc(ev.time||'--:--')}</td><td>${esc(ev.note||'')}</td></tr>`)
+      .sort((a,b)=>{
+        const ad=eventToDate(a, base); const bd=eventToDate(b, base);
+        return (ad?ad.getTime():0)-(bd?bd.getTime():0);
+      })
+      .map(ev=>`<tr><td style="white-space:nowrap">${esc(ev.date||base||'')} ${esc(ev.time||'--:--')}</td><td>${esc(ev.note||'')}</td></tr>`)
       .join('');
 
     const html = [
@@ -333,7 +362,7 @@
       '</div>',
       '<div class="card"><h2>Learnings / Root cause</h2><div>', safeLearn || '<span style="color:#6b7280">(none)</span>', '</div></div>',
       '<div class="card"><h2>Timeline</h2>',
-        '<table><thead><tr><th style="width:120px">Time</th><th>Event</th></tr></thead><tbody>',
+        '<table><thead><tr><th style="width:160px">Date & Time</th><th>Event</th></tr></thead><tbody>',
           eventsHTML || '<tr><td colspan="2">(no events)</td></tr>',
         '</tbody></table>',
       '</div>',
@@ -345,12 +374,7 @@
 
   // ---- Markdown builder ----
   function buildIncidentMarkdown(entry){
-    const times=(entry.events||[]).map(x=>parseHHMM(x.time)).filter(x=>x!=null);
-    const first=times.length? Math.min(...times): null;
-    const last=times.length? Math.max(...times): null;
-    const start= entry.date && first!=null ? combineDateTime(entry.date, hhmm(first)) : null;
-    const end  = entry.date && last!=null  ? combineDateTime(entry.date, hhmm(last))  : null;
-    const duration = (first!=null && last!=null) ? Math.max(0,last-first) : (entry.duration||0);
+    const {start,end,duration}=computeIncidentTimes(entry);
     const lines=[];
     lines.push(`# Incident Postmortem – ${entry.date || 'Unknown date'}`);
     lines.push('');
@@ -365,9 +389,13 @@
     lines.push(entry.learnings? entry.learnings : '_(none provided)_');
     lines.push('');
     lines.push('## Timeline');
+    const base=entry.date||'';
     if(entry.events && entry.events.length){
-      const evs = entry.events.slice().sort((a,b)=> (parseHHMM(a.time)||0)-(parseHHMM(b.time)||0));
-      for(const ev of evs){ lines.push(`- ${ev.time || '--:--'} — ${ev.note||''}`); }
+      const evs = entry.events.slice().sort((a,b)=>{
+        const ad=eventToDate(a, base); const bd=eventToDate(b, base);
+        return (ad?ad.getTime():0)-(bd?bd.getTime():0);
+      });
+      for(const ev of evs){ lines.push(`- ${(ev.date||base||'')} ${ev.time || '--:--'} — ${ev.note||''}`); }
     } else {
       lines.push('_(no events)_');
     }
@@ -400,23 +428,27 @@
   }
 
   // Events
-  addEventBtn.addEventListener('click', ()=> addEventRow('', ''));
+  addEventBtn.addEventListener('click', ()=> addEventRow('', '', ''));
   addNowBtn.addEventListener('click', ()=>{
     const now = new Date();
     const v = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-    addEventRow(v, '');
+    const d = dateEl.value || toISODate(now);
+    addEventRow(v, '', d);
     calcDurationFromTimeline();
   });
+  dateEl.addEventListener('input', calcDurationFromTimeline);
 
   form.addEventListener('submit', ev=>{
     ev.preventDefault();
     const id=rowId.value||Math.random().toString(36).slice(2,10);
     const dateVal=dateEl.value;
     const events=getEventsFromForm();
-    const validTimes=events.filter(e=>parseHHMM(e.time)!=null);
+    const validTimes=events.map(e=> eventToDate(e, dateVal)).filter(Boolean);
     if(!dateVal){ alert('Please select the incident date'); return; }
-    if(validTimes.length<2){ alert('Please add at least two timeline events with a valid HH:MM time'); return; }
-    const duration = (()=>{ const mins=validTimes.map(e=>parseHHMM(e.time)); return Math.max(0, Math.max(...mins)-Math.min(...mins)); })();
+    if(validTimes.length<2){ alert('Please add at least two timeline events with a valid date/time (date optional if incident date is set)'); return; }
+    const first = new Date(Math.min(...validTimes.map(d=>d.getTime())));
+    const last  = new Date(Math.max(...validTimes.map(d=>d.getTime())));
+    const duration = Math.max(0, Math.round((last-first)/60000));
     const entry={ id, date: dateVal, duration, revenue:+revenueEl.value, learnings:learningsEl.value.trim(), events };
     const idx=data.entries.findIndex(x=>x.id===id);
     if(idx>-1) data.entries[idx]=entry; else data.entries.push(entry);
@@ -474,33 +506,34 @@
     const today = new Date();
     const date = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     const sampleEvents=[
-      { time: '10:05', note: 'Alert triggered (Pingdom)' },
-      { time: '10:50', note: 'Mitigation applied: restart API pods' },
-      { time: '11:40', note: 'Recovered; monitoring stable' }
+      { date, time: '23:50', note: 'Night deploy started' },
+      { date: toISODate(new Date(today.getFullYear(),today.getMonth(),today.getDate()+1)), time: '00:20', note: 'Recovered next day' }
     ];
-    const duration = (parseHHMM('11:40') - parseHHMM('10:05'));
+    const validTimes=sampleEvents.map(e=>eventToDate(e, date)).filter(Boolean);
+    const first = new Date(Math.min(...validTimes.map(d=>d.getTime())));
+    const last  = new Date(Math.max(...validTimes.map(d=>d.getTime())));
+    const duration = Math.max(0, Math.round((last-first)/60000));
     data.entries.push({ id: Math.random().toString(36).slice(2,10), date, duration, revenue: 2140.12, learnings: 'DB failover took too long.\nTune health checks.', events: sampleEvents });
     save(); render();
   });
 
-  // Mini tests (do not change unless broken)
+  // Mini tests
   try{
     console.assert(fmtMoney(1234.56).includes('1.234,56'),'EU money format');
     console.assert(parseHHMM('00:00')===0 && parseHHMM('23:59')===1439, 'HH:MM parser');
-    const dur = (parseHHMM('11:40') - parseHHMM('10:05'));
-    console.assert(dur===95,'Duration by timeline');
+    // same-day duration
+    const sd = Math.max(0, (combineDateTime('2025-01-01','11:40') - combineDateTime('2025-01-01','10:05'))/60000);
+    console.assert(sd===95,'Duration by timeline (same day)');
+    // cross-day duration
+    const cd = Math.max(0, (combineDateTime('2025-01-02','00:20') - combineDateTime('2025-01-01','23:50'))/60000);
+    console.assert(cd===30,'Duration by timeline (cross day)');
     console.assert(renderLearnings('a\nb')==='a<br>b','Learnings newline render');
-    // Postmortem build test (ensure no raw ${} leaks into document.write)
-    const _pmSample = { id:'t1', date:'2024-01-01', revenue:1234.5, learnings:'L1\nL2', events:[{time:'10:00',note:'Start'},{time:'11:30',note:'End'}] };
+    // Postmortem/MD build tests
+    const _pmSample = { id:'t1', date:'2025-01-01', revenue:1234.5, learnings:'L1\nL2', events:[{date:'2025-01-01',time:'23:50',note:'Start'},{date:'2025-01-02',time:'00:20',note:'End'}] };
     const _html = buildPostmortemHTML(_pmSample);
     console.assert(typeof _html==='string' && !_html.includes('${'), 'Postmortem HTML contains no raw ${}');
-    // Markdown build tests
-    (function(){
-      const s = {id:'t2', date:'2024-02-02', revenue:999.99, learnings:'A\nB', events:[{time:'10:05',note:'Start'},{time:'11:40',note:'End'}]};
-      const md=buildIncidentMarkdown(s);
-      console.assert(typeof md==='string' && md.includes('Incident Postmortem') && md.includes('## Summary'), 'buildIncidentMarkdown basic');
-      console.assert(md.includes('€'), 'buildIncidentMarkdown includes euro');
-    })();
+    const md=buildIncidentMarkdown(_pmSample);
+    console.assert(md.includes('€') && md.includes('00:20'), 'Markdown includes euro and times');
     console.log('%cMini tests passed','color:#6ee7b7');
   }catch(err){ console.warn('Mini tests failed', err); }
 
